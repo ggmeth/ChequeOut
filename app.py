@@ -127,7 +127,7 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 🖼️ ปรับปรุงระบบซ่อนรูปภาพ: จะไม่แสดงจนกว่าจะกดคลิกเปิดดูตัวเลือกสอย
+                # 🖼️ ระบบซ่อนรูปภาพ
                 try: imgs = json.loads(row['images_json']) if row['images_json'] else []
                 except: imgs = []
                 
@@ -136,9 +136,9 @@ with tab1:
                         img_cols = st.columns(4)
                         for i, img_hex in enumerate(imgs):
                             with img_cols[i % 4]:
-                                st.image(io.BytesIO(bytes.fromhex(img_hex)), use_container_width=True, caption=f"รูปภาพหลักฐานที่ {i+1}")
+                                st.image(io.BytesIO(bytes.fromhex(img_hex)), use_container_width=True, caption=f"รูปที่ {i+1}")
                 else:
-                    st.caption("ℹ️ ไม่มีรูปภาพหลักฐานที่แนบไว้")
+                    st.caption("ℹ️ ไม่มีรูปภาพหลักฐาน")
 
             with col_action:
                 st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
@@ -153,7 +153,7 @@ with tab1:
                     conn.close()
                     st.rerun()
 
-            # ฟอร์มแก้ไข (แทนที่รายการเดิม มั่นใจได้ 100%)
+            # ฟอร์มแก้ไข (แทนที่รายการเดิมและเคลียร์รูปภาพได้เด็ดขาด)
             if btn_edit:
                 with st.form(f"form_edit_{row['id']}"):
                     st.markdown("##### ⚙️ แก้ไขข้อมูลรายการ")
@@ -171,18 +171,26 @@ with tab1:
                         e_stat = st.selectbox("สถานะ", ["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"], index=["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"].index(row['status']) if row['status'] in ["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"] else 0)
                     
                     e_note = st.text_area("หมายเหตุ", value=row['note'])
-                    e_files = st.file_uploader("เปลี่ยนกลุ่มรูปภาพใหม่ (หากปล่อยว่างจะใช้รูปชุดเดิม)", accept_multiple_files=True, key=f"file_ed_{row['id']}")
+                    
+                    st.markdown("---")
+                    e_del_imgs = st.checkbox("🗑️ ลบรูปภาพหลักฐานทั้งหมดของรายการนี้ทิ้ง", key=f"del_img_chk_{row['id']}")
+                    e_files = st.file_uploader("📸 อัปโหลดรูปภาพใหม่เข้าไปแทนที่", accept_multiple_files=True, key=f"file_ed_{row['id']}")
                     
                     if st.form_submit_button("💾 บันทึกการแก้ไข"):
                         conn = sqlite3.connect(DB_NAME)
                         cursor = conn.cursor()
+                        
                         if e_files:
                             new_imgs = json.dumps([f.read().hex() for f in e_files])
                             cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, date=?, status=?, tax=?, cheque_type=?, note=?, images_json=? WHERE id=?", 
                                          (e_no, e_pay, e_amt, e_date.strftime('%Y-%m-%d'), e_stat, e_tax, e_type, e_note, new_imgs, row['id']))
+                        elif e_del_imgs:
+                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, date=?, status=?, tax=?, cheque_type=?, note=?, images_json=? WHERE id=?", 
+                                         (e_no, e_pay, e_amt, e_date.strftime('%Y-%m-%d'), e_stat, e_tax, e_type, e_note, "[]", row['id']))
                         else:
                             cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, date=?, status=?, tax=?, cheque_type=?, note=? WHERE id=?", 
                                          (e_no, e_pay, e_amt, e_date.strftime('%Y-%m-%d'), e_stat, e_tax, e_type, e_note, row['id']))
+                        
                         conn.commit()
                         conn.close()
                         st.success("แก้ไขข้อมูลสำเร็จ!")
@@ -221,7 +229,7 @@ with tab2:
                 st.success("บันทึกสำเร็จ!")
                 st.rerun()
 
-# --- 📥 TAB 3: นำเข้า / ส่งออก Excel ---
+# --- 📥 TAB 3: นำเข้า / ส่งออก Excel & ล้างระบบ ---
 with tab3:
     st.subheader("📥 อัปโหลดนำเข้าไฟล์ Excel")
     up_file = st.file_uploader("เลือกไฟล์ Excel (.xlsx)", type=["xlsx"])
@@ -247,3 +255,18 @@ with tab3:
         with pd.ExcelWriter(buf, engine='openpyxl') as w:
             ex_df.to_excel(w, index=False)
         st.download_button("📥 ดาวน์โหลด Excel", data=buf.getvalue(), file_name="รายงานเช็ค.xlsx")
+        
+    st.markdown("---")
+    # 🚨 โซนอันตรายเพิ่มปุ่มล้างระบบข้อมูลซ้ำ
+    st.subheader("🚨 การจัดการระบบข้อมูลหลังบ้าน")
+    st.error("คำเตือน: ปุ่มด้านล่างนี้จะทำการลบข้อมูลเช็คและรูปภาพหลักฐานทั้งหมดออกจากฐานข้อมูลเว็บอย่างถาวร ไม่สามารถกู้คืนได้")
+    
+    confirm_clear = st.checkbox("ฉันยืนยันว่าต้องการลบข้อมูลทั้งหมดในระบบออกให้หมดเพื่อเริ่มนำเข้าใหม่")
+    if st.button("🗑️ ล้างฐานข้อมูลทั้งหมดให้เป็นศูนย์", disabled=not confirm_clear):
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM cheques")
+        conn.commit()
+        conn.close()
+        st.success("💥 ล้างฐานข้อมูลสำเร็จ! ตอนนี้ระบบว่างเปล่าพร้อมสำหรับการนำข้อมูลเข้าใหม่แล้วครับ")
+        st.rerun()
