@@ -16,6 +16,16 @@ def load_data():
     # โหลดไฟล์ .csv ที่มีอยู่ในคลังข้อมูล GitHub
     df = pd.read_csv("ออกเช็ค 2.xlsx - Sheet1.csv")
     
+    # แก้ปัญหาชื่อคอลัมน์ภาษีเพี้ยน: ค้นหาคอลัมน์ที่มีคำว่า 'ภาษีที่หัก' แล้วเปลี่ยนชื่อให้เป็นมาตรฐาน
+    for col in df.columns:
+        if 'ภาษีที่หัก' in str(col):
+            df = df.rename(columns={col: 'ยอดภาษีที่หัก'})
+            break
+            
+    # ตรวจสอบว่าถ้ายังไม่มีคอลัมน์นี้ ให้สร้างขึ้นมาเป็นค่าว่างเพื่อไม่ให้โค้ดพัง
+    if 'ยอดภาษีที่หัก' not ran in df.columns if 'ยอดภาษีที่หัก' not in df.columns:
+        df['ยอดภาษีที่หัก'] = 0
+        
     # คลีนช่องว่างในข้อความของแต่ละคอลัมน์ ป้องกันการค้นหาไม่เจอ
     df['ประเภทเช็ค'] = df['ประเภทเช็ค'].astype(str).str.strip()
     df['สถานะ'] = df['สถานะ'].astype(str).str.strip()
@@ -72,7 +82,8 @@ st.subheader("📊 สรุปข้อมูลภาพรวม")
 col1, col2, col3, col4 = st.columns(4)
 
 total_amount = filtered_df['ยอดสุทธิในเช็ค (บาท)'].sum()
-total_tax = filtered_df['💡 ยอดภาษีที่หัก '].sum()
+# ใช้ชื่อคอลัมน์ใหม่ที่ถูกเปลี่ยนให้เสถียรแล้ว
+total_tax = pd.to_numeric(filtered_df['ยอดภาษีที่หัก'], errors='coerce').sum()
 active_cheques = filtered_df[filtered_df['สถานะ'].str.contains('จ่ายแล้ว', na=False)].shape[0]
 cancelled_cheques = filtered_df[filtered_df['สถานะ'].str.contains('ยกเลิก', na=False)].shape[0]
 
