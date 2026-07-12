@@ -23,7 +23,7 @@ def load_data():
             break
             
     # ตรวจสอบว่าถ้ายังไม่มีคอลัมน์นี้ ให้สร้างขึ้นมาเป็นค่าว่างเพื่อไม่ให้โค้ดพัง
-    if 'ยอดภาษีที่หัก' not ran in df.columns if 'ยอดภาษีที่หัก' not in df.columns:
+    if 'ยอดภาษีที่หัก' not in df.columns:
         df['ยอดภาษีที่หัก'] = 0
         
     # คลีนช่องว่างในข้อความของแต่ละคอลัมน์ ป้องกันการค้นหาไม่เจอ
@@ -82,7 +82,6 @@ st.subheader("📊 สรุปข้อมูลภาพรวม")
 col1, col2, col3, col4 = st.columns(4)
 
 total_amount = filtered_df['ยอดสุทธิในเช็ค (บาท)'].sum()
-# ใช้ชื่อคอลัมน์ใหม่ที่ถูกเปลี่ยนให้เสถียรแล้ว
 total_tax = pd.to_numeric(filtered_df['ยอดภาษีที่หัก'], errors='coerce').sum()
 active_cheques = filtered_df[filtered_df['สถานะ'].str.contains('จ่ายแล้ว', na=False)].shape[0]
 cancelled_cheques = filtered_df[filtered_df['สถานะ'].str.contains('ยกเลิก', na=False)].shape[0]
@@ -102,33 +101,4 @@ st.markdown("---")
 st.subheader("📈 แผนภูมิวิเคราะห์ข้อมูล")
 chart_col1, chart_col2 = st.columns(2)
 
-with chart_col1:
-    type_summary = filtered_df.groupby('ประเภทเช็ค')['ยอดสุทธิในเช็ค (บาท)'].sum().reset_index()
-    fig_pie = px.pie(type_summary, values='ยอดสุทธิในเช็ค (บาท)', names='ประเภทเช็ค', 
-                     title='สัดส่วนยอดสุทธิแยกตามประเภทเช็ค',
-                     color_discrete_sequence=px.colors.qualitative.Pastel)
-    st.plotly_chart(fig_pie, use_container_width=True)
-
-with chart_col2:
-    top_receivers = filtered_df.groupby('ชื่อผู้รับเงิน')['ยอดสุทธิในเช็ค (บาท)'].sum().reset_index()
-    top_receivers = top_receivers.sort_values(by='ยอดสุทธิในเช็ค (บาท)', ascending=False).head(5)
-    fig_bar = px.bar(top_receivers, x='ยอดสุทธิในเช็ค (บาท)', y='ชื่อผู้รับเงิน', orientation='h',
-                     title='5 อันดับผู้รับเงินที่มียอดรวมสูงสุด',
-                     labels={'ยอดสุทธิในเช็ค (บาท)': 'จำนวนเงิน (บาท)', 'ชื่อผู้รับเงิน': 'ผู้รับเงิน'},
-                     color='ยอดสุทธิในเช็ค (บาท)', color_continuous_scale='Blues')
-    fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-    st.plotly_chart(fig_bar, use_container_width=True)
-
-st.markdown("---")
-
-# --- ส่วนที่ 3: ตารางข้อมูลและระบบตรวจสอบ Error ---
-st.subheader("📋 รายการข้อมูลเช็คทั้งหมด")
-st.dataframe(filtered_df, use_container_width=True)
-
-# ส่วนตรวจสอบข้อผิดพลาด (ดึงข้อมูลจากคอลัมน์ข้อผิดพลาดในไฟล์โดยตรง)
-error_df = filtered_df[filtered_df['ข้อพิดพลาด'].notna() & (filtered_df['ข้อพิดพลาด'].astype(str).str.strip() != '')]
-if not error_df.empty:
-    st.warning(f"⚠️ ตรวจพบรายการเช็คที่มีข้อผิดพลาดจำนวน {error_df.shape[0]} รายการ กรุณาตรวจสอบ!")
-    st.dataframe(error_df[['วันที่ออกเช็ค', 'เลขที่เช็ค', 'ชื่อผู้รับเงิน', 'ข้อพิดพลาด', 'วิธีแก้ไข']], use_container_width=True)
-else:
-    st.success("✅ ไม่พบรายงานข้อผิดพลาดในข้อมูลชุดนี้")
+with chart_col
