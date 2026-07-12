@@ -2,11 +2,10 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
-from PIL import Image
 import io
 import json
 
-# 1. ตั้งค่าหน้าจอธีมสว่าง Modern & Clean รองรับหน้าจอมือถือและคอมพิวเตอร์
+# 1. ตั้งค่าโครงสร้างหน้าจอธีมสว่าง Modern Minimalist
 st.set_page_config(
     page_title="ChequeOut Modern Pro",
     page_icon="💵",
@@ -16,7 +15,7 @@ st.set_page_config(
 
 DB_NAME = "cheque_data_v3.db"
 
-# 2. ฟังก์ชันจัดการฐานข้อมูล
+# 2. เริ่มต้นฐานข้อมูล
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
@@ -37,26 +36,22 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ฟังก์ชันบันทึกกลุ่มข้อมูลจาก Excel โดยตัดคำว่า "นำเข้าจาก excel" ออกตามคำขอ
+# ฟังก์ชันนำเข้าไฟล์ Excel (ไม่มีข้อความบันทึกอัตโนมัติกวนใจ)
 def import_dataframe_to_db(df):
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
     df.columns = df.columns.str.strip()
-    
     for _, row in df.iterrows():
         cheque_no = str(row.get('เลขที่เช็ค', '')).strip()
         payee = str(row.get('ชื่อผู้รับเงิน', '')).strip()
         amount = pd.to_numeric(row.get('ยอดสุทธิในเช็ค (บาท)', 0), errors='coerce')
-        
         dt = row.get('วันที่ออกเช็ค', datetime.date.today())
         if isinstance(dt, pd.Timestamp) or isinstance(dt, datetime.date):
             date_str = dt.strftime('%Y-%m-%d')
         else:
             date_str = str(dt)
-            
         status = str(row.get('สถานะ', 'จ่ายแล้ว')).strip()
         c_type = str(row.get('ประเภทเช็ค', 'เช็ครายได้')).strip()
-        # ปรับให้หมายเหตุว่างไว้ (ไม่มีคำว่านำเข้าจาก Excel กวนใจ)
         note_val = str(row.get('หมายเหตุ', '')).strip() if pd.notna(row.get('หมายเหตุ')) else ''
         
         tax = 0
@@ -64,7 +59,6 @@ def import_dataframe_to_db(df):
             if 'ภาษี' in str(col):
                 tax = pd.to_numeric(row.get(col, 0), errors='coerce')
                 break
-        
         c.execute('''
             INSERT INTO cheques (cheque_no, payee, amount, date, status, tax, cheque_type, images_json, note)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -74,37 +68,179 @@ def import_dataframe_to_db(df):
 
 init_db()
 
-# 3. ตกแต่งหน้าตาแอปด้วย CSS และกำหนดสีสถานะตามสั่ง
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap');
-    html, body, [class*="css"]  { font-family: 'Sarabun', sans-serif !important; }
-    .main { background-color: #f0f2f6; }
-    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-    .stTabs [data-baseweb="tab"] {
-        background-color: #ffffff;
-        border-radius: 10px 10px 0px 0px;
-        padding: 10px 20px;
-        border: 1px solid #e6e9ef;
-        font-weight: bold;
-    }
-    .metric-card {
-        background-color: #ffffff;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        text-align: center;
-        border-top: 5px solid #007bff;
-    }
-    .cheque-box {
-        background-color: #ffffff;
-        padding: 25px;
-        border-radius: 15px;
-        border: 1px solid #e1e4e8;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-        margin-bottom: 5px;
-    }
-    .label-blue { color: #007bff; font-weight: bold; }
-    
-    /* สีของสถานะตามเงื่อนไข */
-    .status-green { background-color: #d1e7dd; color: #0f5132; padding: 4px 12px; border-radius: 10px; font-size
+# 3. โหลด CSS ตกแต่ง (เขียนแยกเป็นคำสั่งสั้น ป้องกันปัญหาสตริงขาดบนหน้าจอมือถือ)
+st.markdown("<style>@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap'); html, body, [class*='css'] { font-family: 'Sarabun', sans-serif !important; } .metric-box { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #007bff; } .card-item { background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; }</style>", unsafe_allow_html=True)
+
+st.title("💵 ChequeOut Modern Pro")
+st.markdown("ระบบบริหารจัดการเช็คและคลังรูปภาพหลักฐานเอกสารจ่ายเงิน")
+
+tab1, tab2, tab3 = st.tabs(["📋 รายการเช็ค & จัดการข้อมูล", "➕ เพิ่มรายการใหม่", "📥 นำเข้า / 📤 ส่งออก Excel"])
+
+# --- 📋 TAB 1: รายการเช็ค (จัดการมุมขวาบน + สีสถานะตามจริง) ---
+with tab1:
+    conn = sqlite3.connect(DB_NAME)
+    df = pd.read_sql_query("SELECT * FROM cheques ORDER BY date DESC", conn)
+    conn.close()
+
+    # แท่งเครื่องมือค้นหา
+    sc1, sc2 = st.columns([2, 1])
+    with sc1:
+        q = st.text_input("🔍 ค้นหาด่วน", placeholder="พิมพ์ชื่อผู้รับ หรือ เลขที่เช็ค...")
+    with sc2:
+        st_filter = st.selectbox("สถานะ", ["ทั้งหมด", "จ่ายแล้ว", "รอดำเนินการ", "ยกเลิก", "ยังไม่จ่าย"])
+
+    filtered_df = df.copy()
+    if q:
+        filtered_df = filtered_df[filtered_df['payee'].str.contains(q, na=False) | filtered_df['cheque_no'].str.contains(q, na=False)]
+    if st_filter != "ทั้งหมด":
+        filtered_df = filtered_df[filtered_df['status'] == st_filter]
+
+    # สรุปยอดเงินย่อยด้านบน
+    v1, v2, v3 = st.columns(3)
+    with v1: st.markdown(f"<div class='metric-box'><div>ยอดรวมสุทธิ</div><div style='font-size:22px; font-weight:bold;'>{filtered_df['amount'].sum():,.2f} ฿</div></div>", unsafe_allow_html=True)
+    with v2: st.markdown(f"<div class='metric-box'><div>ยอดภาษีรวม</div><div style='font-size:22px; font-weight:bold;'>{filtered_df['tax'].sum():,.2f} ฿</div></div>", unsafe_allow_html=True)
+    with v3: st.markdown(f"<div class='metric-box'><div>รวมทั้งหมด</div><div style='font-size:22px; font-weight:bold;'>{len(filtered_df)} ฉบับ</div></div>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    if not filtered_df.empty:
+        for idx, row in filtered_df.iterrows():
+            # กำหนดสี Badge ตามสั่ง: จ่ายแล้ว=เขียว, รอ=เหลือง, ที่เหลือ/ยังไม่จ่าย=แดง
+            st_text = row['status']
+            if st_text == "จ่ายแล้ว":
+                bg_color, text_color = "#d1e7dd", "#0f5132"
+            elif "รอ" in st_text:
+                bg_color, text_color = "#fff3cd", "#664d03"
+            else:
+                bg_color, text_color = "#f8d7da", "#842029"
+
+            # สร้าง Layout แบ่งซ้าย (ข้อมูล) ขวาบน (ปุ่มควบคุม)
+            col_main, col_action = st.columns([4, 1])
+            
+            with col_main:
+                st.markdown(f"""
+                <div class='card-item'>
+                    <div style='display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;'>
+                        <span style='font-size:18px; font-weight:bold;'>📄 เลขที่เช็ค: {row['cheque_no']}</span>
+                        <span style='background-color:{bg_color}; color:{text_color}; padding:3px 12px; border-radius:20px; font-size:13px; font-weight:bold;'>{st_text}</span>
+                    </div>
+                    <div style='font-size:15px; line-height:1.6;'>
+                        <b>ผู้รับเงิน:</b> {row['payee']} | <span style='color:#007bff; font-weight:bold;'>ยอดสุทธิ: {row['amount']:,.2f} บาท</span><br>
+                        <b>ประเภท:</b> {row['cheque_type']} | <b>วันที่:</b> {row['date']} | <b>ภาษีหัก ณ ที่จ่าย:</b> {row['tax']:,.2f} บาท
+                    </div>
+                    <div style='color:#6c757d; font-size:13px; margin-top:5px; font-style:italic;'><b>หมายเหตุ:</b> {row['note'] or '-'}</div>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # แสดงภาพประกอบใต้อาร์ทิเคิล
+                try: imgs = json.loads(row['images_json']) if row['images_json'] else []
+                except: imgs = []
+                if imgs:
+                    img_cols = st.columns(4)
+                    for i, img_hex in enumerate(imgs):
+                        with img_cols[i % 4]:
+                            st.image(io.BytesIO(bytes.fromhex(img_hex)), use_container_width=True)
+
+            with col_action:
+                # ส่วนจัดการมุมขวาบนของการ์ด
+                st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
+                btn_edit = st.checkbox("✏️ แก้ไข", key=f"ed_chk_{row['id']}")
+                btn_delete = st.button("❌ ลบ", key=f"del_btn_{row['id']}", use_container_width=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                if btn_delete:
+                    conn = sqlite3.connect(DB_NAME)
+                    conn.cursor().execute("DELETE FROM cheques WHERE id=?", (row['id'],))
+                    conn.commit()
+                    conn.close()
+                    st.rerun()
+
+            # ฟอร์มแก้ไขแบบพับเปิด-ปิดได้
+            if btn_edit:
+                with st.form(f"form_edit_{row['id']}"):
+                    st.markdown("##### ⚙️ แก้ไขข้อมูลรายการ")
+                    el1, el2 = st.columns(2)
+                    with el1:
+                        e_no = st.text_input("เลขที่เช็ค", value=row['cheque_no'])
+                        e_pay = st.text_input("ชื่อผู้รับเงิน", value=row['payee'])
+                        e_type = st.selectbox("ประเภทเช็ค", ["เช็ครายได้", "เช็คเงินอุดหนุน", "อื่น ๆ"], index=0)
+                    with el2:
+                        e_amt = st.number_input("ยอดเงิน (บาท)", value=float(row['amount']))
+                        e_tax = st.number_input("ภาษี (บาท)", value=float(row['tax'] or 0.0))
+                        e_stat = st.selectbox("สถานะ", ["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"], index=0)
+                    
+                    e_note = st.text_area("หมายเหตุ", value=row['note'])
+                    e_files = st.file_uploader("เปลี่ยนกลุ่มรูปภาพใหม่", accept_multiple_files=True, key=f"file_ed_{row['id']}")
+                    
+                    if st.form_submit_button("💾 บันทึกการแก้ไข"):
+                        conn = sqlite3.connect(DB_NAME)
+                        cursor = conn.cursor()
+                        if e_files:
+                            new_imgs = json.dumps([f.read().hex() for f in e_files])
+                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, status=?, tax=?, cheque_type=?, note=?, images_json=? WHERE id=?", 
+                                         (e_no, e_pay, e_amt, e_stat, e_tax, e_type, e_note, new_imgs, row['id']))
+                        else:
+                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, status=?, tax=?, cheque_type=?, note=? WHERE id=?", 
+                                         (e_no, e_pay, e_amt, e_stat, e_tax, e_type, e_note, row['id']))
+                        conn.commit()
+                        conn.close()
+                        st.rerun()
+            st.markdown("---")
+    else:
+        st.info("ไม่มีรายการบันทึก")
+
+# --- ➕ TAB 2: เพิ่มรายการใหม่ ---
+with tab2:
+    st.subheader("📝 กรอกรายละเอียดเช็คใบใหม่")
+    with st.form("add_new_form", clear_on_submit=True):
+        c1, c2 = st.columns(2)
+        with c1:
+            in_no = st.text_input("เลขที่เช็ค")
+            in_pay = st.text_input("ชื่อผู้รับเงิน")
+            in_type = st.selectbox("ประเภทเช็ค", ["เช็ครายได้", "เช็คเงินอุดหนุน", "อื่น ๆ"])
+        with c2:
+            in_amt = st.number_input("ยอดเงินสุทธิ (บาท)", min_value=0.0)
+            in_tax = st.number_input("ภาษีหัก ณ ที่จ่าย (บาท)", min_value=0.0)
+            in_date = st.date_input("วันที่", datetime.date.today())
+        in_stat = st.selectbox("สถานะเช็ค", ["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"])
+        in_note = st.text_area("หมายเหตุ")
+        in_files = st.file_uploader("📸 แนบรูปหลักฐาน (ได้หลายรูปพร้อมกัน)", accept_multiple_files=True)
+        
+        if st.form_submit_button("✅ บันทึกข้อมูล"):
+            if in_no and in_pay:
+                img_list = json.dumps([f.read().hex() for f in in_files]) if in_files else "[]"
+                conn = sqlite3.connect(DB_NAME)
+                conn.cursor().execute('''
+                    INSERT INTO cheques (cheque_no, payee, amount, date, status, tax, cheque_type, images_json, note)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (in_no, in_pay, in_amt, in_date.strftime('%Y-%m-%d'), in_stat, in_tax, in_type, img_list, in_note))
+                conn.commit()
+                conn.close()
+                st.success("บันทึกสำเร็จ!")
+                st.rerun()
+
+# --- 📥 TAB 3: นำเข้า / ส่งออก Excel ---
+with tab3:
+    st.subheader("📥 อัปโหลดนำเข้าไฟล์ Excel")
+    up_file = st.file_uploader("เลือกไฟล์ Excel (.xlsx)", type=["xlsx"])
+    if up_file is not None:
+        try:
+            df_up = pd.read_excel(up_file)
+            st.dataframe(df_up.head(2))
+            if st.button("🚀 ยืนยันการนำเข้าข้อมูล"):
+                import_dataframe_to_db(df_up)
+                st.success("นำเข้าข้อมูลเสร็จสมบูรณ์เรียบร้อย!")
+                st.rerun()
+        except Exception as e:
+            st.error(f"เกิดข้อผิดพลาด: {e}")
+            
+    st.markdown("---")
+    st.subheader("📤 ส่งออกรายงาน Excel")
+    conn = sqlite3.connect(DB_NAME)
+    ex_df = pd.read_sql_query("SELECT cheque_no, payee, amount, date, status, tax, cheque_type, note FROM cheques", conn)
+    conn.close()
+    if not ex_df.empty:
+        ex_df.columns = ['เลขที่เช็ค', 'ชื่อผู้รับเงิน', 'ยอดสุทธิในเช็ค (บาท)', 'วันที่ออกเช็ค', 'สถานะ', 'ยอดภาษีที่หัก', 'ประเภทเช็ค', 'หมายเหตุ']
+        buf = io.BytesIO()
+        with pd.ExcelWriter(buf, engine='openpyxl') as w:
+            ex_df.to_excel(w, index=False)
+        st.download_button("📥 ดาวน์โหลด Excel", data=buf.getvalue(), file_name="รายงานเช็ค.xlsx")
