@@ -5,7 +5,7 @@ import datetime
 import io
 import json
 
-# 1. ตั้งค่าหน้าจอ
+# 1. ตั้งค่าหน้าจอธีมสว่าง Modern Pro
 st.set_page_config(
     page_title="ChequeOut Modern Pro",
     page_icon="💵",
@@ -69,7 +69,7 @@ def import_dataframe_to_db(df):
 init_db()
 
 # 3. โหลด CSS ตกแต่ง
-st.markdown("<style>@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap'); html, body, [class*='css'] { font-family: 'Sarabun', sans-serif !important; } .metric-box { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #007bff; } .card-item { background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 15px; }</style>", unsafe_allow_html=True)
+st.markdown("<style>@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap'); html, body, [class*='css'] { font-family: 'Sarabun', sans-serif !important; } .metric-box { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center; border-top: 4px solid #007bff; } .card-item { background: white; padding: 20px; border-radius: 12px; border: 1px solid #e2e8f0; margin-bottom: 5px; }</style>", unsafe_allow_html=True)
 
 st.title("💵 ChequeOut Modern Pro")
 st.markdown("ระบบบริหารจัดการเช็คและคลังรูปภาพหลักฐานเอกสารจ่ายเงิน")
@@ -127,13 +127,18 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
                 
+                # 🖼️ ปรับปรุงระบบซ่อนรูปภาพ: จะไม่แสดงจนกว่าจะกดคลิกเปิดดูตัวเลือกสอย
                 try: imgs = json.loads(row['images_json']) if row['images_json'] else []
                 except: imgs = []
+                
                 if imgs:
-                    img_cols = st.columns(4)
-                    for i, img_hex in enumerate(imgs):
-                        with img_cols[i % 4]:
-                            st.image(io.BytesIO(bytes.fromhex(img_hex)), use_container_width=True)
+                    with st.expander("📂 คลิกเพื่อเปิดดูรูปภาพหลักฐาน"):
+                        img_cols = st.columns(4)
+                        for i, img_hex in enumerate(imgs):
+                            with img_cols[i % 4]:
+                                st.image(io.BytesIO(bytes.fromhex(img_hex)), use_container_width=True, caption=f"รูปภาพหลักฐานที่ {i+1}")
+                else:
+                    st.caption("ℹ️ ไม่มีรูปภาพหลักฐานที่แนบไว้")
 
             with col_action:
                 st.markdown("<div style='text-align:right;'>", unsafe_allow_html=True)
@@ -148,7 +153,7 @@ with tab1:
                     conn.close()
                     st.rerun()
 
-            # ฟอร์มแก้ไข (แก้ไขคำสั่ง UPDATE ให้แทนที่รายการเดิมถูกต้อง)
+            # ฟอร์มแก้ไข (แทนที่รายการเดิม มั่นใจได้ 100%)
             if btn_edit:
                 with st.form(f"form_edit_{row['id']}"):
                     st.markdown("##### ⚙️ แก้ไขข้อมูลรายการ")
@@ -156,25 +161,28 @@ with tab1:
                     with el1:
                         e_no = st.text_input("เลขที่เช็ค", value=row['cheque_no'])
                         e_pay = st.text_input("ชื่อผู้รับเงิน", value=row['payee'])
-                        e_type = st.selectbox("ประเภทเช็ค", ["เช็ครายได้", "เช็คเงินอุดหนุน", "อื่น ๆ"], index=0)
+                        e_type = st.selectbox("ประเภทเช็ค", ["เช็ครายได้", "เช็คเงินอุดหนุน", "อื่น ๆ"], index=["เช็ครายได้", "เช็คเงินอุดหนุน", "อื่น ๆ"].index(row['cheque_type']) if row['cheque_type'] in ["เช็ครายได้", "เช็คเงินอุดหนุน", "อื่น ๆ"] else 0)
                     with el2:
                         e_amt = st.number_input("ยอดเงิน (บาท)", value=float(row['amount']))
                         e_tax = st.number_input("ภาษี (บาท)", value=float(row['tax'] or 0.0))
+                        try: current_d = datetime.datetime.strptime(row['date'], '%Y-%m-%d').date()
+                        except: current_d = datetime.date.today()
+                        e_date = st.date_input("วันที่", current_d)
                         e_stat = st.selectbox("สถานะ", ["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"], index=["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"].index(row['status']) if row['status'] in ["จ่ายแล้ว", "รอดำเนินการ", "ยังไม่จ่าย", "ยกเลิก"] else 0)
                     
                     e_note = st.text_area("หมายเหตุ", value=row['note'])
-                    e_files = st.file_uploader("เปลี่ยนกลุ่มรูปภาพใหม่ (หากต้องการเปลี่ยน)", accept_multiple_files=True, key=f"file_ed_{row['id']}")
+                    e_files = st.file_uploader("เปลี่ยนกลุ่มรูปภาพใหม่ (หากปล่อยว่างจะใช้รูปชุดเดิม)", accept_multiple_files=True, key=f"file_ed_{row['id']}")
                     
                     if st.form_submit_button("💾 บันทึกการแก้ไข"):
                         conn = sqlite3.connect(DB_NAME)
                         cursor = conn.cursor()
                         if e_files:
                             new_imgs = json.dumps([f.read().hex() for f in e_files])
-                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, status=?, tax=?, cheque_type=?, note=?, images_json=? WHERE id=?", 
-                                         (e_no, e_pay, e_amt, e_stat, e_tax, e_type, e_note, new_imgs, row['id']))
+                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, date=?, status=?, tax=?, cheque_type=?, note=?, images_json=? WHERE id=?", 
+                                         (e_no, e_pay, e_amt, e_date.strftime('%Y-%m-%d'), e_stat, e_tax, e_type, e_note, new_imgs, row['id']))
                         else:
-                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, status=?, tax=?, cheque_type=?, note=? WHERE id=?", 
-                                         (e_no, e_pay, e_amt, e_stat, e_tax, e_type, e_note, row['id']))
+                            cursor.execute("UPDATE cheques SET cheque_no=?, payee=?, amount=?, date=?, status=?, tax=?, cheque_type=?, note=? WHERE id=?", 
+                                         (e_no, e_pay, e_amt, e_date.strftime('%Y-%m-%d'), e_stat, e_tax, e_type, e_note, row['id']))
                         conn.commit()
                         conn.close()
                         st.success("แก้ไขข้อมูลสำเร็จ!")
