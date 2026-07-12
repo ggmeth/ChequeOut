@@ -4,6 +4,7 @@ import sqlite3
 import datetime
 import io
 import json
+from openpyxl.drawing.image import Image as OpenpyxlImage
 
 # 1. ตั้งค่าหน้าจอธีมสว่าง Modern Pro
 st.set_page_config(
@@ -127,7 +128,6 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 🖼️ ระบบซ่อนรูปภาพ
                 try: imgs = json.loads(row['images_json']) if row['images_json'] else []
                 except: imgs = []
                 
@@ -153,7 +153,6 @@ with tab1:
                     conn.close()
                     st.rerun()
 
-            # ฟอร์มแก้ไข (แทนที่รายการเดิมและเคลียร์รูปภาพได้เด็ดขาด)
             if btn_edit:
                 with st.form(f"form_edit_{row['id']}"):
                     st.markdown("##### ⚙️ แก้ไขข้อมูลรายการ")
@@ -245,19 +244,58 @@ with tab3:
             st.error(f"เกิดข้อผิดพลาด: {e}")
             
     st.markdown("---")
-    st.subheader("📤 ส่งออกรายงาน Excel")
+    st.subheader("📤 ส่งออกรายงาน Excel พร้อมรูปภาพหลักฐาน")
+    
     conn = sqlite3.connect(DB_NAME)
-    ex_df = pd.read_sql_query("SELECT cheque_no, payee, amount, date, status, tax, cheque_type, note FROM cheques", conn)
+    ex_df = pd.read_sql_query("SELECT cheque_no, payee, amount, date, status, tax, cheque_type, note, images_json FROM cheques ORDER BY date DESC", conn)
     conn.close()
+    
     if not ex_df.empty:
-        ex_df.columns = ['เลขที่เช็ค', 'ชื่อผู้รับเงิน', 'ยอดสุทธิในเช็ค (บาท)', 'วันที่ออกเช็ค', 'สถานะ', 'ยอดภาษีที่หัก', 'ประเภทเช็ค', 'หมายเหตุ']
-        buf = io.BytesIO()
-        with pd.ExcelWriter(buf, engine='openpyxl') as w:
-            ex_df.to_excel(w, index=False)
-        st.download_button("📥 ดาวน์โหลด Excel", data=buf.getvalue(), file_name="รายงานเช็ค.xlsx")
+        if st.button("🚀 ประมวลผลและสร้างรายงาน Excel (ฝังรูปภาพลงในไฟล์)"):
+            with st.spinner("กำลังประมวลผลรูปภาพลงในตาราง Excel กรุณารอสักครู่..."):
+                buf = io.BytesIO()
+                with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+                    # สร้าง DataFrame พื้นฐานแบบไม่มีคอลัมน์ JSON ดิบ
+                    export_df = ex_df[['cheque_no', 'payee', 'amount', 'date', 'status', 'tax', 'cheque_type', 'note']].copy()
+                    export_df.columns = ['เลขที่เช็ค', 'ชื่อผู้รับเงิน', 'ยอดสุทธิในเช็ค (บาท)', 'วันที่ออกเช็ค', 'สถานะ', 'ยอดภาษีที่หัก', 'ประเภทเช็ค', 'หมายเหตุ']
+                    export_df['รูปภาพหลักฐาน'] = "" # จองพื้นที่คอลัมน์ไว้ใส่รูป
+                    
+                    export_df.to_excel(writer, index=False, sheet_name='ChequeReport')
+                    ws = writer.sheets['ChequeReport']
+                    
+                    # วนลูปเพื่อนำรูปภาพ Hex ยัดใส่เซลล์ใน Excel จริงๆ
+                    for row_num, img_json in enumerate(ex_df['images_json'], start=2):
+                        ws.row_dimensions[row_num].height = 60  # ขยายความสูงแถวให้เหมาะกับวางรูปภาพด่วน
+                        try:
+                            imgs_list = json.loads(img_json) if img_json else []
+                        except:
+                            imgs_list = []
+                            
+                        if imgs_list:
+                            # ดึงรูปแรกที่แนบไว้มาใส่ในช่อง Excel
+                            try:
+                                img_data = bytes.fromhex(imgs_list[0])
+                                img_file = io.BytesIO(img_data)
+                                xl_img = OpenpyxlImage(img_file)
+                                # ปรับสเกลขนาดรูปภาพเล็กๆ บน Excel พอดีช่อง
+                                xl_img.width = 75
+                                xl_img.height = 55
+                                ws.add_image(xl_img, f'I{row_num}') # คอลัมน์ I คือ คอลัมน์รูปภาพหลักฐาน
+                            except:
+                                ws[f'I{row_num}'] = "โหลดรูปผิดพลาด"
+                        else:
+                            ws[f'I{row_num}'] = "ไม่มีรูปภาพ"
+                            
+                st.download_button(
+                    label="📥 ดาวน์โหลดรายงาน Excel ที่มีรูปภาพ (.xlsx)", 
+                    data=buf.getvalue(), 
+                    file_name=f"รายงานเช็คพร้อมรูปภาพ_{datetime.date.today().strftime('%Y%m%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+    else:
+        st.info("ไม่มีข้อมูลในระบบสำหรับการส่งออก")
         
     st.markdown("---")
-    # 🚨 โซนอันตรายเพิ่มปุ่มล้างระบบข้อมูลซ้ำ
     st.subheader("🚨 การจัดการระบบข้อมูลหลังบ้าน")
     st.error("คำเตือน: ปุ่มด้านล่างนี้จะทำการลบข้อมูลเช็คและรูปภาพหลักฐานทั้งหมดออกจากฐานข้อมูลเว็บอย่างถาวร ไม่สามารถกู้คืนได้")
     
