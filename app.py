@@ -82,23 +82,4 @@ st.subheader("📊 สรุปข้อมูลภาพรวม")
 col1, col2, col3, col4 = st.columns(4)
 
 total_amount = filtered_df['ยอดสุทธิในเช็ค (บาท)'].sum()
-total_tax = pd.to_numeric(filtered_df['ยอดภาษีที่หัก'], errors='coerce').sum()
-active_cheques = filtered_df[filtered_df['สถานะ'].str.contains('จ่ายแล้ว', na=False)].shape[0]
-cancelled_cheques = filtered_df[filtered_df['สถานะ'].str.contains('ยกเลิก', na=False)].shape[0]
-
-with col1:
-    st.metric("ยอดรวมจ่ายสุทธิทั้งหมด", f"{total_amount:,.2f} บาท")
-with col2:
-    st.metric("ยอดรวมภาษีที่หัก", f"{total_tax:,.2f} บาท")
-with col3:
-    st.metric("จำนวนเช็คที่จ่ายแล้ว", f"{active_cheques} ฉบับ")
-with col4:
-    st.metric("จำนวนเช็คที่ยกเลิก", f"{cancelled_cheques} ฉบับ")
-
-st.markdown("---")
-
-# --- ส่วนที่ 2: กราฟสถิติ (Charts) ---
-st.subheader("📈 แผนภูมิวิเคราะห์ข้อมูล")
-chart_col1, chart_col2 = st.columns(2)
-
-with chart_col
+total_tax = pd.to_numeric(filtered_df['ยอดภาษีที่หัก'],
